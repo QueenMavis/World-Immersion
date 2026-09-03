@@ -63,6 +63,9 @@ If the AI writes something that contradicts tracked state (bright sunlight at mi
 4. **In your Output tab:**
    - Copy the code from `Output.js`
 
+   Easiest way to use is to Save this Script on AI-Dungeon and add it to your story
+https://play.aidungeon.com/script/GIJzRczFve0Q/world-immersion-descriptive-and-consistent?source=profile&tss_user=Queen+Mavis&tss_ct=script
+
 ---
 
 ## ⚙️ Configuration
