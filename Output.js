@@ -1,10 +1,5 @@
-/**
- * OUTPUT TAB
- * Copy this entire code into your scenario's OUTPUT tab
- */
-
 WorldWeaver("output");
-const modifier = (text) => {
-  return { text };
+var modifier = function(txt) {
+  return { text: txt };
 };
 modifier(text);
