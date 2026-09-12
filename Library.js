@@ -1,271 +1,106 @@
-// WORLD WEAVER — optimized, leak-resistant edition
-
+// WORLD IMMERSION 2.1 — standalone saved-script add-on
+// Put in World Immersion's OWN Library tab. Leave manual Inner Self untouched.
 var WW_CONFIG = {
-  DETAIL_COUNT: 1,
-  ENABLE_TIME: true,
-  ENABLE_WEATHER: true,
-  ACTIONS_PER_PHASE: 4,
-  WEATHER_CHANGE_CHANCE: 0.25,
-  ENABLE_CONTINUITY: true,
-  ENABLE_EVENT_MEMORY: false,
-  MAX_BLOCK_LENGTH: 360,
-  EVENT_MEMORY: 3,
-  SENSORY_MEMORY: 10
+  ACTIONS_PER_PHASE: 11,
+  AUTO_ADVANCE_TIME: true,
+  INITIAL_TIME: null, // null = unknown until an explicit narrative cue
+  MAX_BLOCK_LENGTH: 520,
+  DEBUG: false
 };
 
-var WW_LOCATIONS = {
-  __default: {
-    name: "current location",
-    sights: [], sounds: [], smells: [], textures: []
-  },
-  forest: {
-    name: "forest",
-    sights: ["filtered light through the canopy", "moss across roots and fallen wood", "movement in the undergrowth"],
-    sounds: ["leaves shifting overhead", "distant birds", "water moving nearby"],
-    smells: ["damp earth", "pine resin", "rain-darkened leaves"],
-    textures: ["soft ground underfoot", "rough bark", "cool damp air"]
+var WorldWeaver = (function () {
+  var phases = ['dawn', 'morning', 'noon', 'afternoon', 'evening', 'night', 'midnight'];
+  var open = '[WW_SCENE_GUIDANCE_V2: ';
+  var close = ']';
+  function object(x) { return x && typeof x === 'object' && !Array.isArray(x); }
+  function validTime(x) { return phases.indexOf(x) !== -1; }
+  function init() {
+    // Separate namespace; do not import possibly incorrect legacy inventory/facts.
+    if (!object(state.WorldImmersionV2)) state.WorldImmersionV2 = {};
+    var s = state.WorldImmersionV2;
+    if (!validTime(s.time)) s.time = validTime(WW_CONFIG.INITIAL_TIME) ? WW_CONFIG.INITIAL_TIME : null;
+    if (!Number.isInteger(s.ticks) || s.ticks < 0) s.ticks = 0;
+    if (!Array.isArray(s.checkpoints)) s.checkpoints = [];
+    return s;
   }
-};
-
-var WW_TIME_PHASES = ["dawn", "morning", "noon", "afternoon", "evening", "night", "midnight"];
-var WW_WEATHER_TYPES = ["clear", "cloudy", "rainy", "stormy", "foggy", "snowy"];
-
-function wwArray(value) {
-  return Object.prototype.toString.call(value) === "[object Array]" ? value : [];
-}
-
-function wwString(value) {
-  return typeof value === "string" ? value : (value == null ? "" : String(value));
-}
-
-function wwLower(value) {
-  return wwString(value).toLowerCase();
-}
-
-function wwInit() {
-  if (typeof state === "undefined") return false;
-  if (!state.WorldWeaver || Object.prototype.toString.call(state.WorldWeaver) !== "[object Object]") {
-    state.WorldWeaver = {};
+  function checkpoint(s) { return {time:s.time, ticks:s.ticks}; }
+  function restore(s, p) { s.time = p.time; s.ticks = p.ticks; }
+  function count() {
+    return typeof info !== 'undefined' && Number.isInteger(info.actionCount) ? info.actionCount : null;
   }
-  var ww = state.WorldWeaver;
-  if (typeof ww.currentLocation !== "string") ww.currentLocation = "__default";
-  if (typeof ww.timeIndex !== "number" || ww.timeIndex < 0 || ww.timeIndex >= WW_TIME_PHASES.length) ww.timeIndex = 1;
-  if (WW_WEATHER_TYPES.indexOf(ww.weather) === -1) ww.weather = "clear";
-  if (typeof ww.turnCounter !== "number") ww.turnCounter = 0;
-  if (typeof ww.lastAdvancedAction !== "number") ww.lastAdvancedAction = -1;
-  ww.recentEvents = wwArray(ww.recentEvents);
-  ww.usedSensory = wwArray(ww.usedSensory);
-  if (!ww.establishedFacts || Object.prototype.toString.call(ww.establishedFacts) !== "[object Object]") ww.establishedFacts = {};
-  ww.playerInventory = wwArray(ww.playerInventory);
-  if (!ww.locationObjects || Object.prototype.toString.call(ww.locationObjects) !== "[object Object]") ww.locationObjects = {};
-  return true;
-}
-
-function wwPick(array) {
-  return array && array.length ? array[Math.floor(Math.random() * array.length)] : "";
-}
-
-function wwEscapeRegex(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function wwHasWord(haystack, word) {
-  return new RegExp("(^|[^a-z0-9])" + wwEscapeRegex(word) + "([^a-z0-9]|$)", "i").test(haystack);
-}
-
-// Detect only from recent played text. Scanning every Story Card made any card
-// containing "forest" force the entire adventure into the forest profile.
-function wwDetectLocation() {
-  var sample = "";
-  if (typeof history !== "undefined" && history && history.length) {
-    for (var i = Math.max(0, history.length - 4); i < history.length; i++) {
-      if (history[i]) sample += " " + wwLower(history[i].text);
+  function cue(value) {
+    // Only explicit standalone narration. Ignore quoted dialogue, questions,
+    // hypothetical plans, bare mentions, and most figurative references.
+    var result = null;
+    String(value || '').split(/[.!?\n]+/).forEach(function (line) {
+      var m = line.trim().match(/^(?:it is|it's|it was|the time is|time is|time:|it is now|it's now)\s+(?:early |late )?(dawn|morning|noon|afternoon|evening|night|midnight)\s*$/i);
+      if (m) result = m[1].toLowerCase();
+    });
+    return result;
+  }
+  function input(s, value) {
+    var n = count();
+    // Without an action identifier do not guess or double-count.
+    if (n === null) return;
+    var found = s.checkpoints.find(function (p) { return p.n === n; });
+    if (found) {
+      restore(s, found.before);
+      s.checkpoints = s.checkpoints.filter(function (p) { return p.n < n; });
+    } else if (Number.isInteger(s.lastAction) && n <= s.lastAction) {
+      // Deep undo outside retained checkpoints: forget the inferred clock.
+      s.time = null;
+      s.ticks = 0;
+      s.checkpoints = s.checkpoints.filter(function (p) { return p.n < n; });
     }
-  }
-  if (typeof text !== "undefined") sample += " " + wwLower(text).slice(-1200);
-
-  var best = null;
-  var bestAt = -1;
-  for (var key in WW_LOCATIONS) {
-    if (!WW_LOCATIONS.hasOwnProperty(key) || key === "__default") continue;
-    var at = sample.lastIndexOf(key.toLowerCase());
-    if (at > bestAt && wwHasWord(sample, key)) {
-      best = key;
-      bestAt = at;
-    }
-  }
-  return best || state.WorldWeaver.currentLocation || "__default";
-}
-
-function wwAdvanceOnce() {
-  var ww = state.WorldWeaver;
-  var action = (typeof info !== "undefined" && typeof info.actionCount === "number")
-    ? info.actionCount : ww.lastAdvancedAction + 1;
-  if (action === ww.lastAdvancedAction) return;
-  ww.lastAdvancedAction = action;
-  ww.turnCounter++;
-  if (!WW_CONFIG.ENABLE_TIME || ww.turnCounter % Math.max(1, WW_CONFIG.ACTIONS_PER_PHASE) !== 0) return;
-  ww.timeIndex = (ww.timeIndex + 1) % WW_TIME_PHASES.length;
-  if (WW_CONFIG.ENABLE_WEATHER && Math.random() < WW_CONFIG.WEATHER_CHANGE_CHANCE) {
-    var choices = [];
-    for (var i = 0; i < WW_WEATHER_TYPES.length; i++) {
-      if (WW_WEATHER_TYPES[i] !== ww.weather) choices.push(WW_WEATHER_TYPES[i]);
-    }
-    ww.weather = wwPick(choices) || ww.weather;
-  }
-}
-
-function wwSensoryCues(locationKey, count) {
-  var profile = WW_LOCATIONS[locationKey] || WW_LOCATIONS.__default;
-  var pool = [].concat(profile.sights || [], profile.sounds || [], profile.smells || [], profile.textures || []);
-  if (!pool.length || count < 1) return [];
-  var unused = [];
-  for (var i = 0; i < pool.length; i++) {
-    if (state.WorldWeaver.usedSensory.indexOf(pool[i]) === -1) unused.push(pool[i]);
-  }
-  if (unused.length < count) unused = pool.slice();
-  var result = [];
-  while (unused.length && result.length < count) {
-    var index = Math.floor(Math.random() * unused.length);
-    result.push(unused.splice(index, 1)[0]);
-  }
-  state.WorldWeaver.usedSensory = state.WorldWeaver.usedSensory.concat(result).slice(-WW_CONFIG.SENSORY_MEMORY);
-  return result;
-}
-
-function wwContinuityFields() {
-  var ww = state.WorldWeaver;
-  var fields = [];
-  var facts = [];
-  for (var key in ww.establishedFacts) {
-    if (ww.establishedFacts.hasOwnProperty(key)) facts.push(key + "=" + ww.establishedFacts[key]);
-  }
-  if (facts.length) fields.push("facts=" + facts.join(", "));
-  if (ww.playerInventory.length) fields.push("carrying=" + ww.playerInventory.join(", "));
-  var here = ww.locationObjects[ww.currentLocation];
-  var objects = [];
-  if (here) {
-    for (var objectName in here) {
-      if (here.hasOwnProperty(objectName)) objects.push(objectName + ":" + here[objectName]);
-    }
-  }
-  if (objects.length) fields.push("objects=" + objects.join(", "));
-  if (WW_CONFIG.ENABLE_EVENT_MEMORY && ww.recentEvents.length) fields.push("recent=" + ww.recentEvents.join(" / "));
-  return fields;
-}
-
-function wwBuildPrivateContext() {
-  var ww = state.WorldWeaver;
-  var profile = WW_LOCATIONS[ww.currentLocation] || WW_LOCATIONS.__default;
-  var fields = ["place=" + profile.name];
-  if (WW_CONFIG.ENABLE_TIME) fields.push("time=" + WW_TIME_PHASES[ww.timeIndex]);
-  if (WW_CONFIG.ENABLE_WEATHER) fields.push("weather=" + ww.weather);
-  var cues = wwSensoryCues(ww.currentLocation, WW_CONFIG.DETAIL_COUNT);
-  if (cues.length) fields.push("optional sensory cue=" + cues.join("; "));
-  fields = fields.concat(wwContinuityFields());
-  var data = fields.join(" | ");
-  var header = "[WW PRIVATE DATA — never quote, list, explain, or treat as story text. Preserve facts; naturally use no more than one relevant sensory cue: ";
-  var block = header + data + "]";
-  return block.slice(0, WW_CONFIG.MAX_BLOCK_LENGTH);
-}
-
-function wwParseInput(inputText) {
-  // Deliberately conservative: avoids treating phrases such as "leave her alone"
-  // as inventory operations.
-  var lower = wwLower(inputText);
-  var ww = state.WorldWeaver;
-  var take = lower.match(/(?:^|\n)>?\s*(?:you\s+)?(?:pick up|take|grab|collect)\s+(?:the\s+)?([a-z0-9 '\-]{1,36})(?:[.!?,;]|$)/i);
-  if (take) {
-    var item = take[1].trim();
-    if (item && ww.playerInventory.indexOf(item) === -1) ww.playerInventory.push(item);
-  }
-  var drop = lower.match(/(?:^|\n)>?\s*(?:you\s+)?(?:drop|put down|discard)\s+(?:the\s+)?([a-z0-9 '\-]{1,36})(?:[.!?,;]|$)/i);
-  if (drop) {
-    var dropped = drop[1].trim();
-    var index = ww.playerInventory.indexOf(dropped);
-    if (index !== -1) {
-      ww.playerInventory.splice(index, 1);
-      if (!ww.locationObjects[ww.currentLocation]) ww.locationObjects[ww.currentLocation] = {};
-      ww.locationObjects[ww.currentLocation][dropped] = "on the ground";
-    }
-  }
-}
-
-function wwRecordEvent(outputText) {
-  if (!WW_CONFIG.ENABLE_EVENT_MEMORY || typeof outputText !== "string") return;
-  var first = outputText.replace(/\s+/g, " ").trim().split(/[.!?]/)[0];
-  if (first.length < 20) return;
-  if (first.length > 100) first = first.slice(0, 100) + "…";
-  var events = state.WorldWeaver.recentEvents;
-  if (events.indexOf(first) === -1) events.push(first);
-  state.WorldWeaver.recentEvents = events.slice(-WW_CONFIG.EVENT_MEMORY);
-}
-
-function wwStripLeaks(outputText) {
-  var value = wwString(outputText);
-  // Remove literal private blocks if a model copies their delimiters.
-  value = value.replace(/\[WW PRIVATE DATA[^\]]*\]\s*/gi, "");
-  value = value.replace(/\[World State[^\]]*\][\s\S]*?\[(?:End World State|\/World State)\]\s*/gi, "");
-
-  // Remove a leaked explanatory list only when at least three consecutive
-  // bullet lines advertise internal world/time/weather rules.
-  var lines = value.split("\n");
-  var out = [];
-  for (var i = 0; i < lines.length;) {
-    var j = i;
-    var matches = 0;
-    while (j < lines.length && /^\s*[-*]\s+/.test(lines[j])) {
-      if (/\b(world|atmospher|continuity|weather|terrain|light conditions|physical properties|fixed state)\b/i.test(lines[j])) matches++;
-      j++;
-    }
-    if (j - i >= 3 && matches >= 3) i = j;
-    else { out.push(lines[i]); i++; }
-  }
-  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-}
-
-function wwCheckContinuity(outputText) {
-  if (!WW_CONFIG.ENABLE_CONTINUITY) return;
-  var lower = wwLower(outputText);
-  var phase = WW_TIME_PHASES[state.WorldWeaver.timeIndex];
-  if ((phase === "night" || phase === "midnight") && /\b(bright sunlight|sunshine)\b/.test(lower)) {
-    log("WW continuity warning: daylight during " + phase);
-  }
-  if (state.WorldWeaver.weather === "clear" && /\brain(?:s|ed|ing)?\b/.test(lower) && lower.indexOf("no rain") === -1) {
-    log("WW continuity warning: rain during clear weather");
-  }
-}
-
-var WorldWeaver = function(hook) {
-  try {
-    if (!wwInit()) return;
-    if (hook === "input") {
-      wwAdvanceOnce();
-      wwParseInput(text);
-    } else if (hook === "context") {
-      var detected = wwDetectLocation();
-      if (detected) state.WorldWeaver.currentLocation = detected;
-      var block = wwBuildPrivateContext();
-      if (block) {
-        // Keep the most recent player input at the end; placing metadata after it
-        // encourages the model to continue the metadata instead of the story.
-        var safeText = wwString(text);
-        var insertAt = safeText.lastIndexOf("\n");
-        if (insertAt < 0) insertAt = 0;
-        text = safeText.slice(0, insertAt) + "\n" + block + "\n" + safeText.slice(insertAt);
-        if (typeof info !== "undefined" && typeof info.maxChars === "number" && text.length > info.maxChars) {
-          var memoryLength = typeof info.memoryLength === "number" ? info.memoryLength : 0;
-          var memory = text.slice(0, memoryLength);
-          var rest = text.slice(memoryLength);
-          text = memory + rest.slice(-(info.maxChars - memory.length));
-        }
+    var before = checkpoint(s);
+    // Learn only from the latest committed story, never from all Story Cards.
+    var h = typeof history !== 'undefined' && Array.isArray(history) ? history : [];
+    var last = h.length ? h[h.length - 1] : null;
+    var explicit = cue(value);
+    if (!explicit && last && ['continue','story','start'].indexOf(last.type) !== -1) explicit = cue(last.text);
+    if (explicit && explicit !== s.time) { s.time = explicit; s.ticks = 0; }
+    else if (explicit) { s.ticks = 0; }
+    else if (WW_CONFIG.AUTO_ADVANCE_TIME && s.time) {
+      s.ticks++;
+      var pace = Number.isInteger(WW_CONFIG.ACTIONS_PER_PHASE) && WW_CONFIG.ACTIONS_PER_PHASE > 0 ? WW_CONFIG.ACTIONS_PER_PHASE : 11;
+      if (s.ticks >= pace) {
+        s.time = phases[(phases.indexOf(s.time) + 1) % phases.length];
+        s.ticks = 0;
       }
-    } else if (hook === "output") {
-      text = wwStripLeaks(text);
-      wwRecordEvent(text);
-      wwCheckContinuity(text);
     }
-  } catch (error) {
-    log("WW error in " + hook + ": " + (error && error.message ? error.message : error));
+    s.lastAction = n;
+    s.checkpoints.push({n:n, before:before});
+    s.checkpoints = s.checkpoints.slice(-80);
   }
-};
+  function context(s, value) {
+    if (typeof stop !== 'undefined' && stop === true) return value;
+    // Never duplicate a block if this hook is called twice with its own result.
+    if (value.indexOf(open) !== -1) return value;
+    var base = 'Use as background guidance, not story text. For story narration only, continue the current scene without recap. Preserve established surroundings and object positions. Let travel and elapsed time follow the story. Add sensory detail only when relevant and consistent; do not invent player actions or feelings.';
+    var clock = s.time ? ' Tentative time: ' + s.time + '; explicit story time and scene pacing take priority.' : '';
+    var block = open + base + clock + close;
+    var cap = Number.isFinite(WW_CONFIG.MAX_BLOCK_LENGTH) ? Math.max(0, WW_CONFIG.MAX_BLOCK_LENGTH) : 520;
+    if (block.length > cap) block = open + base + close;
+    if (block.length > cap) return value;
+    // Other scripts can rebuild context, making memoryLength stale.
+    // Prepend a complete note without splitting the received prompt.
+    var addition = '\n\n' + block + '\n\n';
+    // At full capacity, skip optional guidance instead of deleting story text.
+    if (typeof info !== 'undefined' && Number.isFinite(info.maxChars) && value.length + addition.length > info.maxChars) return value;
+    return addition + value;
+  }
+  return function (hook) {
+    var original = typeof text === 'string' ? text : null;
+    if (original === null || typeof state === 'undefined') return;
+    try {
+      var s = init();
+      if (hook === 'input') input(s, original);
+      else if (hook === 'context') text = context(s, original);
+      // Output is intentionally untouched. Inner Self owns thought extraction.
+      // Do not save generated output as a second, potentially stale memory.
+    } catch (e) {
+      text = original;
+      if (WW_CONFIG.DEBUG && typeof log === 'function') log('World Immersion: ' + e.message);
+    }
+  };
+})();
