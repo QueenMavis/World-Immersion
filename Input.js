@@ -1,5 +1,3 @@
-WorldWeaver("input");
-var modifier = function(txt) {
-  return { text: txt };
-};
+WorldWeaver('input');
+var modifier = function (value) { return { text: value }; };
 modifier(text);
