@@ -1,487 +1,271 @@
-// ═════════════════════════════════════════════════════════════════════════════
-// WORLD WEAVER — Self-Healing Edition
-// Compatible with Inner Self (add via AI Dungeon script library)
-// ═════════════════════════════════════════════════════════════════════════════
+// WORLD WEAVER — optimized, leak-resistant edition
 
-log("WW: Loading library...");
-
-// ─── CONFIG ───
 var WW_CONFIG = {
-  DETAIL_COUNT: 2,
+  DETAIL_COUNT: 1,
   ENABLE_TIME: true,
   ENABLE_WEATHER: true,
   ACTIONS_PER_PHASE: 4,
   WEATHER_CHANGE_CHANCE: 0.25,
   ENABLE_CONTINUITY: true,
-  USE_FRONT_MEMORY: false,
-  MAX_BLOCK_LENGTH: 600,
-  EVENT_MEMORY: 5,
+  ENABLE_EVENT_MEMORY: false,
+  MAX_BLOCK_LENGTH: 360,
+  EVENT_MEMORY: 3,
   SENSORY_MEMORY: 10
 };
 
-// ─── LOCATION DATA ───
 var WW_LOCATIONS = {
   __default: {
-    name: "the unknown place",
-    sights: [
-      "faint light flickering from an unseen source",
-      "shadows that seem to shift when unobserved",
-      "dust motes suspended in pale shafts of illumination",
-      "weathered surfaces bearing the patina of age",
-      "subtle movements at the edge of vision"
-    ],
-    sounds: [
-      "the low hum of distant machinery or wind",
-      "floorboards settling with a ghostly creak",
-      "silence so complete it rings in your ears",
-      "the scurry of something small and hidden",
-      "air moving through cracks with a breathy whisper"
-    ],
-    smells: [
-      "old stone and dormant earth",
-      "the metallic ghost of past rain",
-      "dried herbs and forgotten incense",
-      "stale air that hasn't moved in days",
-      "wood polish and aging paper"
-    ],
-    textures: [
-      "rough stone gritting beneath your touch",
-      "smooth wood worn concave by years of use",
-      "damp air clinging to your skin like a veil",
-      "uneven ground threatening to twist an ankle",
-      "cold metal radiating a subterranean chill"
-    ],
-    atmosphere: "heavy with the weight of untold stories"
+    name: "current location",
+    sights: [], sounds: [], smells: [], textures: []
   },
-
   forest: {
-    name: "the ancient wood",
-    sights: [
-      "sunlight filtering through the canopy in cathedral beams",
-      "moss carpeting every surface in emerald velvet",
-      "fungal lanterns glowing faintly on rotting logs",
-      "a deer trail winding into shadowed undergrowth",
-      "leaves trembling though the air is still"
-    ],
-    sounds: [
-      "branches groaning like old joints in the wind",
-      "the distant cry of a bird you've never heard",
-      "water dripping from leaf to leaf in slow percussion",
-      "the snap of a twig somewhere behind you",
-      "insects humming a constant, droning chord"
-    ],
-    smells: [
-      "pine resin sharp and clean as a knife",
-      "decaying leaves rich as dark chocolate",
-      "the mineral breath of a nearby stream",
-      "wildflowers crushed underfoot releasing perfume",
-      "petrichor rising from rain-darkened earth"
-    ],
-    textures: [
-      "bark flaking away under your fingertips",
-      "soft loam giving beneath your weight",
-      "nettles brushing your ankle with velvet teeth",
-      "a spider's web breaking across your face like silk",
-      "moss swallowing your footsteps in damp silence"
-    ],
-    atmosphere: "alive with the slow pulse of ancient growth"
+    name: "forest",
+    sights: ["filtered light through the canopy", "moss across roots and fallen wood", "movement in the undergrowth"],
+    sounds: ["leaves shifting overhead", "distant birds", "water moving nearby"],
+    smells: ["damp earth", "pine resin", "rain-darkened leaves"],
+    textures: ["soft ground underfoot", "rough bark", "cool damp air"]
   }
 };
 
-// ─── TIME & WEATHER ───
 var WW_TIME_PHASES = ["dawn", "morning", "noon", "afternoon", "evening", "night", "midnight"];
-var WW_TIME_DESC = {
-  dawn: "The world holds its breath between night and day. The eastern sky bleeds from indigo to rose, and every surface glistens with dew.",
-  morning: "Morning light pours golden and slanted through the world, sharpening edges and warming stone. The air tastes of new beginnings.",
-  noon: "The sun rides high and merciless, bleaching colors to their bones. Shadows shrink to nothing beneath every object.",
-  afternoon: "Light thickens to honey, stretching shadows long and lazy across the ground. The day's heat has settled into everything.",
-  evening: "Twilight bruises the sky in violet and amber. The first stars prick through, and the air cools with the promise of night.",
-  night: "Darkness wraps the world in velvet, pierced only by starlight and the occasional gleam of eyes in the black. Sounds carry farther now.",
-  midnight: "The hour of deepest night—silence hangs absolute, and the world seems paused between one breath and the next."
-};
 var WW_WEATHER_TYPES = ["clear", "cloudy", "rainy", "stormy", "foggy", "snowy"];
-var WW_WEATHER_DESC = {
-  clear: "The sky is a vast, unbroken dome. Every detail stands in sharp relief, and distant objects seem close enough to touch.",
-  cloudy: "Heavy clouds bruise the sky, filtering light to a muted pewter. The air feels pressurized, expectant.",
-  rainy: "Rain needles down in silver threads, drumming against every surface. The air is thick with petrichor and the green smell of wet earth.",
-  stormy: "Thunder rolls like cannon fire as wind lashes everything in its path. Lightning momentarily bleaches the world to monochrome.",
-  foggy: "Thick fog coils through the streets and alleys, swallowing sound and reducing the world to a few meters of gray uncertainty.",
-  snowy: "Snow falls in silent, fat flakes, blanketing the world in hushed white. Breath plumes in the frigid air, and every sound is muffled."
-};
 
-// ─── STATE REPAIR (runs every turn) ───
-function wwFixState() {
-  if (typeof state === "undefined") {
-    log("WW CRITICAL: 'state' object missing. Cannot persist data.");
-    return false;
-  }
+function wwArray(value) {
+  return Object.prototype.toString.call(value) === "[object Array]" ? value : [];
+}
 
-  var defaults = {
-    currentLocation: null,
-    timeIndex: 1,
-    weather: "clear",
-    turnCounter: 0,
-    recentEvents: [],
-    usedSensory: [],
-    establishedFacts: {},
-    playerInventory: [],
-    locationObjects: {}
-  };
+function wwString(value) {
+  return typeof value === "string" ? value : (value == null ? "" : String(value));
+}
 
-  if (!state.WorldWeaver) {
+function wwLower(value) {
+  return wwString(value).toLowerCase();
+}
+
+function wwInit() {
+  if (typeof state === "undefined") return false;
+  if (!state.WorldWeaver || Object.prototype.toString.call(state.WorldWeaver) !== "[object Object]") {
     state.WorldWeaver = {};
-    log("WW: Created fresh state");
   }
-
   var ww = state.WorldWeaver;
-
-  for (var key in defaults) {
-    if (!defaults.hasOwnProperty(key)) continue;
-    var expected = defaults[key];
-    var actual = ww[key];
-    var typeExpected = typeof expected;
-    var typeActual = typeof actual;
-
-    if (typeActual === "undefined") {
-      ww[key] = expected;
-      log("WW: Repaired missing '" + key + "'");
-    } else if (typeExpected === "object" && expected !== null && actual === null) {
-      ww[key] = expected;
-      log("WW: Repaired null '" + key + "'");
-    } else if (typeExpected === "object" && expected !== null && Object.prototype.toString.call(expected) === "[object Array]" && Object.prototype.toString.call(actual) !== "[object Array]") {
-      ww[key] = expected;
-      log("WW: Repaired corrupted array '" + key + "'");
-    } else if (typeExpected === "object" && expected !== null && Object.prototype.toString.call(expected) !== "[object Array]" && Object.prototype.toString.call(actual) !== "[object Object]") {
-      ww[key] = expected;
-      log("WW: Repaired corrupted object '" + key + "'");
-    }
-  }
-
+  if (typeof ww.currentLocation !== "string") ww.currentLocation = "__default";
+  if (typeof ww.timeIndex !== "number" || ww.timeIndex < 0 || ww.timeIndex >= WW_TIME_PHASES.length) ww.timeIndex = 1;
+  if (WW_WEATHER_TYPES.indexOf(ww.weather) === -1) ww.weather = "clear";
+  if (typeof ww.turnCounter !== "number") ww.turnCounter = 0;
+  if (typeof ww.lastAdvancedAction !== "number") ww.lastAdvancedAction = -1;
+  ww.recentEvents = wwArray(ww.recentEvents);
+  ww.usedSensory = wwArray(ww.usedSensory);
+  if (!ww.establishedFacts || Object.prototype.toString.call(ww.establishedFacts) !== "[object Object]") ww.establishedFacts = {};
+  ww.playerInventory = wwArray(ww.playerInventory);
+  if (!ww.locationObjects || Object.prototype.toString.call(ww.locationObjects) !== "[object Object]") ww.locationObjects = {};
   return true;
 }
 
-// ─── HELPERS ───
-function wwPickRandom(arr, exclude) {
-  exclude = exclude || [];
-  var pool = [];
-  for (var i = 0; i < arr.length; i++) {
-    if (exclude.indexOf(arr[i]) === -1) pool.push(arr[i]);
-  }
-  if (pool.length === 0) pool = arr;
-  return pool[Math.floor(Math.random() * pool.length)];
+function wwPick(array) {
+  return array && array.length ? array[Math.floor(Math.random() * array.length)] : "";
 }
 
-function wwShuffle(arr) {
-  var copy = [];
-  for (var i = 0; i < arr.length; i++) copy.push(arr[i]);
-  for (var i = copy.length - 1; i > 0; i--) {
-    var j = Math.floor(Math.random() * (i + 1));
-    var tmp = copy[i];
-    copy[i] = copy[j];
-    copy[j] = tmp;
-  }
-  return copy;
+function wwEscapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function wwSafeString(val) {
-  if (typeof val === "string") return val;
-  if (val === null || typeof val === "undefined") return "";
-  return String(val);
+function wwHasWord(haystack, word) {
+  return new RegExp("(^|[^a-z0-9])" + wwEscapeRegex(word) + "([^a-z0-9]|$)", "i").test(haystack);
 }
 
-function wwSafeLower(val) {
-  return wwSafeString(val).toLowerCase();
-}
-
-// ─── LOCATION DETECTION ───
+// Detect only from recent played text. Scanning every Story Card made any card
+// containing "forest" force the entire adventure into the forest profile.
 function wwDetectLocation() {
-  var locKeys = [];
-  for (var k in WW_LOCATIONS) {
-    if (WW_LOCATIONS.hasOwnProperty(k) && k !== "__default") locKeys.push(k);
-  }
-
-  var textToSearch = "";
-  var i, k;
-
-  if (typeof storyCards !== "undefined" && storyCards && storyCards.length) {
-    for (i = 0; i < storyCards.length; i++) {
-      var card = storyCards[i];
-      if (!card || typeof card !== "object") continue;
-      var name = wwSafeLower(card.name);
-      var keys = wwSafeLower(card.keys);
-      var entry = wwSafeLower(card.entry);
-      textToSearch = name + " " + keys + " " + entry;
-      for (k = 0; k < locKeys.length; k++) {
-        if (textToSearch.indexOf(locKeys[k]) !== -1) return locKeys[k];
-      }
-    }
-  }
-
+  var sample = "";
   if (typeof history !== "undefined" && history && history.length) {
-    var recent = [];
-    var start = Math.max(0, history.length - 3);
-    for (i = start; i < history.length; i++) {
-      if (history[i] && typeof history[i].text !== "undefined") {
-        recent.push(history[i]);
-      }
-    }
-    textToSearch = "";
-    for (i = 0; i < recent.length; i++) {
-      textToSearch += " " + wwSafeLower(recent[i].text);
-    }
-    for (k = 0; k < locKeys.length; k++) {
-      if (textToSearch.indexOf(locKeys[k]) !== -1) return locKeys[k];
+    for (var i = Math.max(0, history.length - 4); i < history.length; i++) {
+      if (history[i]) sample += " " + wwLower(history[i].text);
     }
   }
+  if (typeof text !== "undefined") sample += " " + wwLower(text).slice(-1200);
 
-  var cur = wwSafeLower(text);
-  for (k = 0; k < locKeys.length; k++) {
-    if (cur.indexOf(locKeys[k]) !== -1) return locKeys[k];
+  var best = null;
+  var bestAt = -1;
+  for (var key in WW_LOCATIONS) {
+    if (!WW_LOCATIONS.hasOwnProperty(key) || key === "__default") continue;
+    var at = sample.lastIndexOf(key.toLowerCase());
+    if (at > bestAt && wwHasWord(sample, key)) {
+      best = key;
+      bestAt = at;
+    }
   }
-
-  if (state.WorldWeaver && state.WorldWeaver.currentLocation) {
-    return state.WorldWeaver.currentLocation;
-  }
-  return "__default";
+  return best || state.WorldWeaver.currentLocation || "__default";
 }
 
-// ─── SENSORY ENGINE ───
-function wwGetSensoryBlock(locationKey, count) {
-  var profile = WW_LOCATIONS[locationKey] || WW_LOCATIONS.__default;
-  var pool = [];
-  var i;
-
-  if (profile.sights)   { for (i = 0; i < profile.sights.length;   i++) pool.push({ type: "Sight",  text: profile.sights[i]   }); }
-  if (profile.sounds)   { for (i = 0; i < profile.sounds.length;   i++) pool.push({ type: "Sound",  text: profile.sounds[i]   }); }
-  if (profile.smells)   { for (i = 0; i < profile.smells.length;   i++) pool.push({ type: "Smell",  text: profile.smells[i]   }); }
-  if (profile.textures) { for (i = 0; i < profile.textures.length; i++) pool.push({ type: "Touch",  text: profile.textures[i] }); }
-
+function wwAdvanceOnce() {
   var ww = state.WorldWeaver;
-  var available = [];
-  for (i = 0; i < pool.length; i++) {
-    if (ww.usedSensory.indexOf(pool[i].text) === -1) available.push(pool[i]);
-  }
-  var usePool = available.length >= count ? available : pool;
-  var shuffled = wwShuffle(usePool);
-  var selected = [];
-  for (i = 0; i < count && i < shuffled.length; i++) selected.push(shuffled[i]);
-
-  for (i = 0; i < selected.length; i++) {
-    ww.usedSensory.push(selected[i].text);
-  }
-  if (ww.usedSensory.length > WW_CONFIG.SENSORY_MEMORY) {
-    ww.usedSensory = ww.usedSensory.slice(ww.usedSensory.length - WW_CONFIG.SENSORY_MEMORY);
-  }
-
-  if (selected.length === 0) return "";
-
-  var starters = {
-    Sight: ["You notice", "Your eyes catch", "You see"],
-    Sound: ["You hear", "Your ears pick up", "The air carries"],
-    Smell: ["You catch the scent of", "The air smells of", "Your nose detects"],
-    Touch: ["You feel", "Your skin senses", "The air feels"]
-  };
-
-  var fragments = [];
-  for (i = 0; i < selected.length; i++) {
-    var s = wwPickRandom(starters[selected[i].type] || ["You perceive"]);
-    fragments.push(s + " " + selected[i].text);
-  }
-  return fragments.join(". ") + ".";
-}
-
-// ─── TIME & WEATHER ───
-function wwAdvanceWorld() {
-  var ww = state.WorldWeaver;
+  var action = (typeof info !== "undefined" && typeof info.actionCount === "number")
+    ? info.actionCount : ww.lastAdvancedAction + 1;
+  if (action === ww.lastAdvancedAction) return;
+  ww.lastAdvancedAction = action;
   ww.turnCounter++;
-  if (WW_CONFIG.ENABLE_TIME && ww.turnCounter % WW_CONFIG.ACTIONS_PER_PHASE === 0) {
-    ww.timeIndex = (ww.timeIndex + 1) % WW_TIME_PHASES.length;
-    log("WW: Time is now " + WW_TIME_PHASES[ww.timeIndex]);
-    if (WW_CONFIG.ENABLE_WEATHER && Math.random() < WW_CONFIG.WEATHER_CHANGE_CHANCE) {
-      var old = ww.weather;
-      ww.weather = wwPickRandom(WW_WEATHER_TYPES, [old]);
-      log("WW: Weather changed to " + ww.weather + " (was " + old + ")");
+  if (!WW_CONFIG.ENABLE_TIME || ww.turnCounter % Math.max(1, WW_CONFIG.ACTIONS_PER_PHASE) !== 0) return;
+  ww.timeIndex = (ww.timeIndex + 1) % WW_TIME_PHASES.length;
+  if (WW_CONFIG.ENABLE_WEATHER && Math.random() < WW_CONFIG.WEATHER_CHANGE_CHANCE) {
+    var choices = [];
+    for (var i = 0; i < WW_WEATHER_TYPES.length; i++) {
+      if (WW_WEATHER_TYPES[i] !== ww.weather) choices.push(WW_WEATHER_TYPES[i]);
     }
+    ww.weather = wwPick(choices) || ww.weather;
   }
 }
 
-function wwGetTimeBlock() {
-  if (!WW_CONFIG.ENABLE_TIME) return "";
-  return WW_TIME_DESC[WW_TIME_PHASES[state.WorldWeaver.timeIndex]] || "";
+function wwSensoryCues(locationKey, count) {
+  var profile = WW_LOCATIONS[locationKey] || WW_LOCATIONS.__default;
+  var pool = [].concat(profile.sights || [], profile.sounds || [], profile.smells || [], profile.textures || []);
+  if (!pool.length || count < 1) return [];
+  var unused = [];
+  for (var i = 0; i < pool.length; i++) {
+    if (state.WorldWeaver.usedSensory.indexOf(pool[i]) === -1) unused.push(pool[i]);
+  }
+  if (unused.length < count) unused = pool.slice();
+  var result = [];
+  while (unused.length && result.length < count) {
+    var index = Math.floor(Math.random() * unused.length);
+    result.push(unused.splice(index, 1)[0]);
+  }
+  state.WorldWeaver.usedSensory = state.WorldWeaver.usedSensory.concat(result).slice(-WW_CONFIG.SENSORY_MEMORY);
+  return result;
 }
 
-function wwGetWeatherBlock() {
-  if (!WW_CONFIG.ENABLE_WEATHER) return "";
-  return WW_WEATHER_DESC[state.WorldWeaver.weather] || "";
-}
-
-// ─── CONTINUITY ───
-function wwRecordEvent(outputText) {
-  if (typeof outputText !== "string" || outputText.length < 20) return;
-  var parts = outputText.split(/[.!?]/);
-  var summary = wwSafeString(parts[0]).trim();
-  if (summary.length > 120) summary = summary.substring(0, 120) + "...";
+function wwContinuityFields() {
   var ww = state.WorldWeaver;
-  if (summary && ww.recentEvents.indexOf(summary) === -1) {
-    ww.recentEvents.push(summary);
-    if (ww.recentEvents.length > WW_CONFIG.EVENT_MEMORY) ww.recentEvents.shift();
-  }
-}
-
-function wwGetContinuityBlock() {
-  var ww = state.WorldWeaver;
-  var parts = [];
-  if (ww.recentEvents.length > 0) {
-    parts.push("Recent events: " + ww.recentEvents.join("; ") + ".");
-  }
+  var fields = [];
   var facts = [];
-  for (var k in ww.establishedFacts) {
-    if (ww.establishedFacts.hasOwnProperty(k)) facts.push(k + "=" + ww.establishedFacts[k]);
+  for (var key in ww.establishedFacts) {
+    if (ww.establishedFacts.hasOwnProperty(key)) facts.push(key + "=" + ww.establishedFacts[key]);
   }
-  if (facts.length > 0) parts.push("Facts: " + facts.join("; ") + ".");
-  var locObjs = ww.locationObjects[ww.currentLocation];
-  if (locObjs) {
-    var objList = [];
-    for (var ok in locObjs) {
-      if (locObjs.hasOwnProperty(ok)) objList.push(ok + " (" + locObjs[ok] + ")");
+  if (facts.length) fields.push("facts=" + facts.join(", "));
+  if (ww.playerInventory.length) fields.push("carrying=" + ww.playerInventory.join(", "));
+  var here = ww.locationObjects[ww.currentLocation];
+  var objects = [];
+  if (here) {
+    for (var objectName in here) {
+      if (here.hasOwnProperty(objectName)) objects.push(objectName + ":" + here[objectName]);
     }
-    if (objList.length > 0) parts.push("Objects here: " + objList.join(", ") + ".");
   }
-  if (ww.playerInventory.length > 0) {
-    parts.push("Carrying: " + ww.playerInventory.join(", ") + ".");
+  if (objects.length) fields.push("objects=" + objects.join(", "));
+  if (WW_CONFIG.ENABLE_EVENT_MEMORY && ww.recentEvents.length) fields.push("recent=" + ww.recentEvents.join(" / "));
+  return fields;
+}
+
+function wwBuildPrivateContext() {
+  var ww = state.WorldWeaver;
+  var profile = WW_LOCATIONS[ww.currentLocation] || WW_LOCATIONS.__default;
+  var fields = ["place=" + profile.name];
+  if (WW_CONFIG.ENABLE_TIME) fields.push("time=" + WW_TIME_PHASES[ww.timeIndex]);
+  if (WW_CONFIG.ENABLE_WEATHER) fields.push("weather=" + ww.weather);
+  var cues = wwSensoryCues(ww.currentLocation, WW_CONFIG.DETAIL_COUNT);
+  if (cues.length) fields.push("optional sensory cue=" + cues.join("; "));
+  fields = fields.concat(wwContinuityFields());
+  var data = fields.join(" | ");
+  var header = "[WW PRIVATE DATA — never quote, list, explain, or treat as story text. Preserve facts; naturally use no more than one relevant sensory cue: ";
+  var block = header + data + "]";
+  return block.slice(0, WW_CONFIG.MAX_BLOCK_LENGTH);
+}
+
+function wwParseInput(inputText) {
+  // Deliberately conservative: avoids treating phrases such as "leave her alone"
+  // as inventory operations.
+  var lower = wwLower(inputText);
+  var ww = state.WorldWeaver;
+  var take = lower.match(/(?:^|\n)>?\s*(?:you\s+)?(?:pick up|take|grab|collect)\s+(?:the\s+)?([a-z0-9 '\-]{1,36})(?:[.!?,;]|$)/i);
+  if (take) {
+    var item = take[1].trim();
+    if (item && ww.playerInventory.indexOf(item) === -1) ww.playerInventory.push(item);
   }
-  return parts.join(" ");
+  var drop = lower.match(/(?:^|\n)>?\s*(?:you\s+)?(?:drop|put down|discard)\s+(?:the\s+)?([a-z0-9 '\-]{1,36})(?:[.!?,;]|$)/i);
+  if (drop) {
+    var dropped = drop[1].trim();
+    var index = ww.playerInventory.indexOf(dropped);
+    if (index !== -1) {
+      ww.playerInventory.splice(index, 1);
+      if (!ww.locationObjects[ww.currentLocation]) ww.locationObjects[ww.currentLocation] = {};
+      ww.locationObjects[ww.currentLocation][dropped] = "on the ground";
+    }
+  }
+}
+
+function wwRecordEvent(outputText) {
+  if (!WW_CONFIG.ENABLE_EVENT_MEMORY || typeof outputText !== "string") return;
+  var first = outputText.replace(/\s+/g, " ").trim().split(/[.!?]/)[0];
+  if (first.length < 20) return;
+  if (first.length > 100) first = first.slice(0, 100) + "…";
+  var events = state.WorldWeaver.recentEvents;
+  if (events.indexOf(first) === -1) events.push(first);
+  state.WorldWeaver.recentEvents = events.slice(-WW_CONFIG.EVENT_MEMORY);
+}
+
+function wwStripLeaks(outputText) {
+  var value = wwString(outputText);
+  // Remove literal private blocks if a model copies their delimiters.
+  value = value.replace(/\[WW PRIVATE DATA[^\]]*\]\s*/gi, "");
+  value = value.replace(/\[World State[^\]]*\][\s\S]*?\[(?:End World State|\/World State)\]\s*/gi, "");
+
+  // Remove a leaked explanatory list only when at least three consecutive
+  // bullet lines advertise internal world/time/weather rules.
+  var lines = value.split("\n");
+  var out = [];
+  for (var i = 0; i < lines.length;) {
+    var j = i;
+    var matches = 0;
+    while (j < lines.length && /^\s*[-*]\s+/.test(lines[j])) {
+      if (/\b(world|atmospher|continuity|weather|terrain|light conditions|physical properties|fixed state)\b/i.test(lines[j])) matches++;
+      j++;
+    }
+    if (j - i >= 3 && matches >= 3) i = j;
+    else { out.push(lines[i]); i++; }
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function wwCheckContinuity(outputText) {
-  if (!WW_CONFIG.ENABLE_CONTINUITY || typeof outputText !== "string") return;
-  var lower = outputText.toLowerCase();
-  var phase = WW_TIME_PHASES[state.WorldWeaver.timeIndex] || "";
-  var nightPhases = ["evening", "night", "midnight"];
-  if (nightPhases.indexOf(phase) !== -1) {
-    if (lower.indexOf("bright sunlight") !== -1 || lower.indexOf("sunshine") !== -1) {
-      log("WW CONTINUITY: daylight mentioned during " + phase);
-    }
+  if (!WW_CONFIG.ENABLE_CONTINUITY) return;
+  var lower = wwLower(outputText);
+  var phase = WW_TIME_PHASES[state.WorldWeaver.timeIndex];
+  if ((phase === "night" || phase === "midnight") && /\b(bright sunlight|sunshine)\b/.test(lower)) {
+    log("WW continuity warning: daylight during " + phase);
   }
-  if (state.WorldWeaver.weather === "clear" && lower.indexOf("rain") !== -1 && lower.indexOf("no rain") === -1) {
-    log("WW CONTINUITY: rain mentioned during clear weather");
+  if (state.WorldWeaver.weather === "clear" && /\brain(?:s|ed|ing)?\b/.test(lower) && lower.indexOf("no rain") === -1) {
+    log("WW continuity warning: rain during clear weather");
   }
 }
 
-// ─── INPUT PARSING (no regex — string ops only) ───
-function wwParseInput(inputText) {
-  if (typeof inputText !== "string") return;
-  var lower = inputText.toLowerCase();
-  var ww = state.WorldWeaver;
-
-  var takeWords = ["pick up", "take", "grab", "collect"];
-  for (var t = 0; t < takeWords.length; t++) {
-    var tw = takeWords[t];
-    var idx = lower.indexOf(tw);
-    if (idx !== -1) {
-      var after = lower.substring(idx + tw.length).trim();
-      after = after.replace(/^the\s+/, "");
-      var end = after.search(/[.,;]/);
-      if (end === -1) end = after.length;
-      var item = after.substring(0, end).trim();
-      if (item && item.length > 0 && item.length < 40 && ww.playerInventory.indexOf(item) === -1) {
-        ww.playerInventory.push(item);
-        if (ww.locationObjects[ww.currentLocation]) delete ww.locationObjects[ww.currentLocation][item];
-        log("WW: +inventory '" + item + "'");
-      }
-      break;
-    }
-  }
-
-  var dropWords = ["drop", "put down", "discard", "leave"];
-  for (var d = 0; d < dropWords.length; d++) {
-    var dw = dropWords[d];
-    var didx = lower.indexOf(dw);
-    if (didx !== -1) {
-      var dafter = lower.substring(didx + dw.length).trim();
-      dafter = dafter.replace(/^the\s+/, "");
-      var dend = dafter.search(/[.,;]/);
-      if (dend === -1) dend = dafter.length;
-      var ditem = dafter.substring(0, dend).trim();
-      if (ditem && ditem.length > 0 && ditem.length < 40) {
-        var remIdx = ww.playerInventory.indexOf(ditem);
-        if (remIdx !== -1) {
-          ww.playerInventory.splice(remIdx, 1);
-          if (!ww.locationObjects[ww.currentLocation]) ww.locationObjects[ww.currentLocation] = {};
-          ww.locationObjects[ww.currentLocation][ditem] = "on the ground";
-          log("WW: -inventory '" + ditem + "' @ " + ww.currentLocation);
-        }
-      }
-      break;
-    }
-  }
-}
-
-// ─── MAIN ROUTER ───
 var WorldWeaver = function(hook) {
   try {
-    log("WW: === " + hook.toUpperCase() + " HOOK ===");
-
-    if (!wwFixState()) {
-      log("WW: State fix failed, aborting");
-      return;
-    }
-
-    if (typeof text === "undefined") {
-      log("WW: text is undefined, skipping");
-      return;
-    }
-
+    if (!wwInit()) return;
     if (hook === "input") {
-      log("WW: Parsing input");
+      wwAdvanceOnce();
       wwParseInput(text);
-    }
-    else if (hook === "context") {
-      log("WW: Building context");
-
+    } else if (hook === "context") {
       var detected = wwDetectLocation();
-      var ww = state.WorldWeaver;
-      if (detected && detected !== ww.currentLocation) {
-        log("WW: Location → '" + detected + "'");
-        ww.currentLocation = detected;
-      }
-      wwAdvanceWorld();
-
-      var blocks = [];
-      var t = wwGetTimeBlock();    if (t) blocks.push(t);
-      var w = wwGetWeatherBlock(); if (w) blocks.push(w);
-      var s = wwGetSensoryBlock(ww.currentLocation || "__default", WW_CONFIG.DETAIL_COUNT);
-      if (s) blocks.push(s);
-      var c = wwGetContinuityBlock(); if (c) blocks.push(c);
-      var profile = WW_LOCATIONS[ww.currentLocation] || WW_LOCATIONS.__default;
-      if (profile && profile.atmosphere) blocks.push("The atmosphere is " + profile.atmosphere + ".");
-
-      if (blocks.length > 0) {
-        var worldBlock = blocks.join("\n\n");
-        if (worldBlock.length > WW_CONFIG.MAX_BLOCK_LENGTH) {
-          worldBlock = worldBlock.substring(0, WW_CONFIG.MAX_BLOCK_LENGTH) + "...";
-        }
-
-        if (WW_CONFIG.USE_FRONT_MEMORY) {
-          if (!state.memory) state.memory = {};
-          if (!state.memory.frontMemory) state.memory.frontMemory = "";
-          state.memory.frontMemory += "\n\n[World State]\n" + worldBlock + "\n[/World State]";
-        } else {
-          var safeText = wwSafeString(text);
-          text = safeText + "\n\n[World State — Atmosphere & Continuity]\n" + worldBlock + "\n[End World State]\n";
+      if (detected) state.WorldWeaver.currentLocation = detected;
+      var block = wwBuildPrivateContext();
+      if (block) {
+        // Keep the most recent player input at the end; placing metadata after it
+        // encourages the model to continue the metadata instead of the story.
+        var safeText = wwString(text);
+        var insertAt = safeText.lastIndexOf("\n");
+        if (insertAt < 0) insertAt = 0;
+        text = safeText.slice(0, insertAt) + "\n" + block + "\n" + safeText.slice(insertAt);
+        if (typeof info !== "undefined" && typeof info.maxChars === "number" && text.length > info.maxChars) {
+          var memoryLength = typeof info.memoryLength === "number" ? info.memoryLength : 0;
+          var memory = text.slice(0, memoryLength);
+          var rest = text.slice(memoryLength);
+          text = memory + rest.slice(-(info.maxChars - memory.length));
         }
       }
-    }
-    else if (hook === "output") {
-      log("WW: Processing output");
+    } else if (hook === "output") {
+      text = wwStripLeaks(text);
       wwRecordEvent(text);
       wwCheckContinuity(text);
     }
-
-    log("WW: === " + hook.toUpperCase() + " DONE ===");
-  } catch (e) {
-    log("WW FATAL in " + (hook || "?") + ": " + (e.message || e));
+  } catch (error) {
+    log("WW error in " + hook + ": " + (error && error.message ? error.message : error));
   }
 };
-
-log("WW: Library loaded OK");
