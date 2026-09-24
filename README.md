@@ -1,144 +1,114 @@
-# World Immersion — WorldWeaver Script
+# World Immersion 2.9
 
-**World Immersion** makes your AI Dungeon world feel alive, consistent, and vividly described — **automatically, every turn**, without manual prompting.
+World Immersion is a lightweight AI Dungeon saved-script add-on that keeps the physical world present without overpowering the story. It provides subtle rotating sensory cues, compact continuity support, and gradual time progression while leaving generated story text and player agency intact.
 
-## 🌍 What It Does
+It works as a standalone script and can also run after a manually installed copy of [Inner Self](https://github.com/LewdLeah/Inner-Self).
 
-### Five-Sense Descriptions
-Fresh sensory details injected every turn:
-- **Sight** — lighting, colors, movement
-- **Sound** — ambient sounds, distant noises  
-- **Smell** — scents in the air
-- **Touch** — textures, temperature, physical sensations
+## What it does
 
-Details rotate so you never see the same description twice.
+### Subtle sensory rotation
 
-### Time & Weather Tracking
-- **7-phase time system** — dawn → morning → noon → afternoon → evening → night → midnight
-- **6 weather types** — clear, cloudy, rainy, stormy, foggy, snowy
-- Weather changes dynamically; time advances every ~4 player actions
-- The AI receives full atmospheric prose so conditions actually *feel* real
+Every second newly observed context generation, World Immersion offers one short, conditional cue:
 
-### Location Detection
-The script automatically detects where you are by scanning:
-- Story cards
-- Recent history
-- Current text
+**Sight → Sound → Scent → Touch → repeat**
 
-If you're in a forest, you get forest sensory profiles. Unknown locations fall back to mysterious atmosphere.
+The cue may draw from an established person, interaction, object, or location. This allows details such as appearance, expression, voice, clothing, nearby scent, texture, temperature, pressure, or physical warmth when the current scene supports them.
 
-### Continuity Memory
-The script remembers and feeds back to the AI:
-- **Recent events** — last 5 significant moments
-- **Established facts** — hard truths you've set (e.g., "the bridge is broken")
-- **Room objects** — items dropped or left behind
-- **Inventory** — what you're carrying
+The AI creates the detail from the active story. World Immersion does not use a fixed description bank and does not request a separate descriptive paragraph. Quiet turns receive no World Immersion prompt at all.
 
-This prevents characters from forgetting what just happened, where things are, or what the weather should be.
+### Scene continuity
 
-### Continuity Warnings
-If the AI writes something that contradicts tracked state (bright sunlight at midnight, rain during clear skies), the script logs a warning in the console.
+Sensory turns include a compact reminder to continue directly and preserve established scene facts. This encourages consistent people, surroundings, objects, positions, conditions, and recent changes while still allowing actions and events to alter them naturally.
 
----
+This is guidance rather than a separate fact database. Important canon still belongs in Plot Essentials and Story Cards.
 
-## 🚀 Installation & Setup
+### Gradual time progression
 
-### Requirements
-- **Inner-Self mod** — WorldWeaver runs *alongside* Inner-Self, not inside it
-  - Get Inner-Self here: https://github.com/LewdLeah/Inner-Self
+Time starts unknown. An unquoted standalone Story sentence such as `It is morning.` establishes the clock.
 
-### How to Add to Your Scenario
+Each phase lasts 20 subsequent input actions:
 
-1. **In your scenario's Library tab:**
-   - Paste the *entire* Inner-Self Library code at the top
-   - Paste the *entire* Library.js code below it
-   - They won't collide — Inner-Self uses `state.memory.frontMemory`, WorldWeaver uses `state.WorldWeaver`
+**Dawn → Morning → Noon → Afternoon → Evening → Night → Midnight → Dawn**
 
-2. **In your Context tab:**
-   - Copy the code from `Context.js`
+World Immersion mentions time only when its tentative phase changes. Explicit Story timing overrides the clock and resets its count. Questions, quoted dialogue, past-tense statements, and ordinary mentions do not establish time.
 
-3. **In your Input tab:**
-   - Copy the code from `Input.js`
+The parser is deliberately conservative. It does not attempt to infer every sleep, journey, or time skip; state the resulting phase in Story mode when an exact override is needed.
 
-4. **In your Output tab:**
-   - Copy the code from `Output.js`
+### Flow and repetition protection
 
-   Easiest way to use is to Save this Script on AI-Dungeon and add it to your story
-https://play.aidungeon.com/script/GIJzRczFve0Q/world-immersion-descriptive-and-consistent?source=profile&tss_user=Queen+Mavis&tss_ct=script
+- Adds nothing on non-cue turns.
+- Uses one compact sensory instruction instead of a checklist.
+- Does not replay opening prose or store generated descriptions for reinjection.
+- Never removes received story context to make room for optional guidance.
+- Retries with the same action identifier do not advance rotation or time.
+- Undo is supported with bounded recent checkpoints.
+- Identifiable leaked World Immersion guidance is removed from output.
 
----
+## Installation
 
-## ⚙️ Configuration
+Add World Immersion as its own saved script and copy each file into the matching tab:
 
-Edit these values in Library.js to customize behavior:
+- `Library.js` → Library
+- `Input.js` → Input
+- `Context.js` → Context
+- `Output.js` → Output
+
+Save the script and select that version for the scenario. Keep only one World Immersion instance active.
+
+### With Inner Self
+
+1. Install Inner Self manually in the scenario.
+2. Add World Immersion as a separate saved script beneath Inner Self in the run order.
+3. Leave Inner Self's four tabs unchanged.
+
+Inner Self and World Immersion use separate state namespaces. World Immersion does not call Inner Self or write to its thoughts, cards, memory, Author's Note, or front memory.
+
+Turn **Optimized Context off** when using the published Inner Self version. AI Dungeon notes that Optimized Context disables some scripting features, and Inner Self does not currently guarantee compatibility with it.
+
+## Configuration
+
+The main settings are at the top of `Library.js`:
 
 ```javascript
-const CONFIG = {
-  DETAIL_COUNT: 2,              // sensory details per turn (1-5)
-  ENABLE_TIME: true,            // track time of day?
-  ENABLE_WEATHER: true,         // track weather?
-  ACTIONS_PER_PHASE: 4,         // actions before time advances
-  WEATHER_CHANGE_CHANCE: 0.25,  // 25% chance weather changes with time
-  ENABLE_CONTINUITY: true,      // check for contradictions?
-  USE_FRONT_MEMORY: false,      // inject into Inner-Self's frontMemory?
-  MAX_BLOCK_LENGTH: 600,        // max characters for world block
-  EVENT_MEMORY: 5,              // how many events to remember
-  SENSORY_MEMORY: 10            // how many sensory details to track
+var WW_CONFIG = {
+  ACTIONS_PER_PHASE: 20,
+  AUTO_ADVANCE_TIME: true,
+  INITIAL_TIME: null,
+  MAX_BLOCK_LENGTH: 360,
+  DEBUG: false
 };
 ```
 
----
+`INITIAL_TIME: null` keeps time unknown until the story establishes it.
 
-## 🗺️ Adding Custom Locations
+## Boundaries
 
-Add location profiles to the `LOCATIONS` object in Library.js:
+World Immersion does not:
 
-```javascript
-const LOCATIONS = {
-  forest: {
-    name: "the ancient wood",
-    sights: ["sunlight filtering through canopy", "moss carpeting everything"],
-    sounds: ["branches groaning in wind", "distant bird cries"],
-    smells: ["pine resin", "decaying leaves"],
-    textures: ["bark flaking under fingers", "soft loam"],
-    atmosphere: "alive with the slow pulse of ancient growth"
-  },
-  
-  // Add your own location here:
-  castle: {
-    name: "the stone keep",
-    sights: ["torchlight dancing on gray stone", "tapestries hanging in folds"],
-    sounds: ["echo of footsteps on marble", "distant bells chiming"],
-    smells: ["cold stone and metal", "old torches burning"],
-    textures: ["rough hewn stone", "cold iron railings"],
-    atmosphere: "steeped in ages of history and power"
-  }
-};
+- control player actions, dialogue, thoughts, or feelings;
+- manage NPC thoughts or replace Inner Self;
+- force weather, locations, discoveries, threats, or events;
+- guess inventory or reconstruct a database of scene facts;
+- overwrite Story Cards, Plot Essentials, Author's Note, memory, or front memory;
+- guarantee that every AI model will obey every optional cue.
+
+## Testing
+
+Run the regression suite with Node:
+
+```bash
+node test.cjs
 ```
 
-The script detects locations by name (case-insensitive substring matching).
+The self-contained suite covers the 20-action clock, explicit time overrides, two-action sensory rotation, untouched quiet turns, retry, undo, context-budget handling, guidance-leak cleanup, and long-run state bounds. When the development-only Inner Self fixture is present, it also runs the integration check; its absence does not prevent the public standalone suite from running.
 
----
+These deterministic tests verify script mechanics. Narrative quality still requires live AI Dungeon playtesting because models and settings respond differently.
 
-## 🎮 What It Doesn't Do
+## References
 
-❌ Replace Inner-Self — they're partners  
-❌ Control NPCs or their thoughts (that's Inner-Self's job)  
-❌ Use frontMemory, so it won't fight Inner-Self for priority  
-❌ Require manual updates mid-game — it's fully automatic  
+- [AI Dungeon scripting documentation](https://help.aidungeon.com/scripting)
+- [Inner Self](https://github.com/LewdLeah/Inner-Self)
 
----
+## License
 
-## 📝 How It Appears In-Game
-
-You won't see raw script text. The AI simply starts writing richer, more atmospheric descriptions that respect time, weather, and what's already happened. The world starts *feeling* like it has memory.
-
----
-
-## 📜 License
-
-MIT License — See LICENSE file.
-
-## 📖 Topics
-
-`ai-dungeon` `world-building` `immersion` `roleplay` `open-source` `script` `continuity` `sensory-description`
+MIT License — see `LICENSE`.
